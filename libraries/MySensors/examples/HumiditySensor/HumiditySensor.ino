@@ -4,7 +4,7 @@
 
 #define CHILD_ID_HUM 0
 #define CHILD_ID_TEMP 1
-#define HUMIDITY_SENSOR_DIGITAL_PIN 3
+#define HUMIDITY_SENSOR_DIGITAL_PIN 5
 unsigned long SLEEP_TIME = 30000; // Sleep time between reads (in milliseconds)
 
 MySensor gw;
