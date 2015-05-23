@@ -1,0 +1,8 @@
+MYSBootloader V1.1 / 20150314 / tekka
+
+settings for flashing:
+
+clock = 16 Mhz (ext XTAL)
+low = 0xF7
+high = 0xDA
+extended = 0xFE (BOD 1V8)

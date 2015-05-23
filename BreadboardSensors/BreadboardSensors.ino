@@ -3,6 +3,9 @@
 #include <DHT.h>
 #include <NewPing.h>
 
+// Give each sensor 4 bytes in EEPROM
+#define EEPROM_ADDR(sensor_id) (sensor_id * 4)
+
 #define CHILD_ID_HUM 0
 #define CHILD_ID_TEMP 1
 #define CHILD_ID_LIGHT 2
@@ -31,7 +34,7 @@ bool led_panel_on = true;
 // Distance Sensor
 #define TRIGGER_PIN  8  // Arduino pin tied to trigger pin on the ultrasonic sensor.
 #define ECHO_PIN     7  // Arduino pin tied to echo pin on the ultrasonic sensor.
-#define MAX_DISTANCE 300 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
+#define MAX_DISTANCE 200 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
 int lastDist;
 
@@ -46,7 +49,7 @@ MyMessage msgLight(CHILD_ID_LIGHT, V_LIGHT_LEVEL);
 MyMessage msgDist(CHILD_ID_DISTANCE, V_DISTANCE);
 
 // Sensor presentation
-#define SENSOR_PRESENTATION_PERIOD (30*1000)
+#define SENSOR_PRESENTATION_PERIOD (5*60*1000)
 
 void presentSensors()
 {
@@ -90,10 +93,19 @@ void incomingMessage(const MyMessage &message) {
      // Change relay state
      led_panel_on = message.getBool();
      // Store state in eeprom
-     gw.saveState(message.sensor, message.getBool());
+     gw.saveState(EEPROM_ADDR(message.sensor), message.getBool());
      // Write some debug info
      Serial.print("LED Panel new status: ");
      Serial.println(message.getBool());
+     if (led_panel_on) {
+       // set to min level
+       fade(0, false);
+     } else {
+       // go to min
+       fade(0, false);
+       // then turn off completely
+       analogWrite(LED_PANEL_PIN, 0);
+     }
    } 
 }
 
@@ -111,7 +123,9 @@ void setup()
 
   // LED Panel setup
   pinMode(LED_PANEL_PIN, OUTPUT);
-  //led_panel_on = gw.loadState(CHILD_ID_LED_PANEL);
+  led_panel_on = gw.loadState(EEPROM_ADDR(CHILD_ID_LED_PANEL));
+  light_min = gw.loadState(EEPROM_ADDR(CHILD_ID_LIGHT));
+  light_max = gw.loadState(EEPROM_ADDR(CHILD_ID_LIGHT)+1);
 }
 
 void loop()      
@@ -119,6 +133,9 @@ void loop()
   static unsigned long nextPresent = 0;
   static unsigned long nextDHTSample = 0;
   static unsigned long nextSample = 0;
+
+  // Process incoming messages
+  gw.process();
   
   // Every once in a while make sure the gateway knows about our sensors.
   // TODO: Is retransmit necessary?
@@ -167,8 +184,15 @@ void loop()
     // Get raw light level
     int lightLevel = (1023-analogRead(LIGHT_SENSOR_ANALOG_PIN))/10.23; 
     // and update extremes if necessary
-    if (lightLevel > light_max) light_max = lightLevel;
-    if (lightLevel < light_min) light_min = lightLevel;
+    if (lightLevel < light_min) {
+      light_min = lightLevel;
+      gw.saveState(EEPROM_ADDR(CHILD_ID_LIGHT), light_min);
+    }
+    if (lightLevel > light_max) {
+      light_max = lightLevel;
+      gw.saveState(EEPROM_ADDR(CHILD_ID_LIGHT)+1, light_max);
+    }
+    
     // map light level against historical min/max
     lightLevel = map(lightLevel, light_min, light_max, 0, 100);
 #if 0
