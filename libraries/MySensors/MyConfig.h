@@ -4,6 +4,9 @@
 /***
  * Configure Sensor Network
  */
+// Run the radios on the 2.465 GHz band. 2.476 is a bit too close to the 
+// restricted band for my tastes. 
+//#define RF24_CHANNEL	   65             //RF channel for the sensor net, 0-127
 #define RF24_CHANNEL	   76             //RF channel for the sensor net, 0-127
 #define RF24_DATARATE 	   RF24_250KBPS   //RF24_250KBPS for 250kbs, RF24_1MBPS for 1Mbps, or RF24_2MBPS for 2Mbps
 #define RF24_PA_LEVEL 	   RF24_PA_MAX    //Sensor PA Level == RF24_PA_MIN=-18dBm, RF24_PA_LOW=-12dBm, RF24_PA_HIGH=-6dBM, and RF24_PA_MAX=0dBm

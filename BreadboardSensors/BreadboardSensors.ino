@@ -40,9 +40,9 @@ int lastDist;
 
 unsigned long SLEEP_TIME = 5000; // Sleep time between reads (in milliseconds)
 
-// MySensors 
+// MySensors
 MySensor gw;
-boolean metric = true; 
+boolean metric = true;
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 MyMessage msgLight(CHILD_ID_LIGHT, V_LIGHT_LEVEL);
@@ -64,21 +64,21 @@ void presentSensors()
 }
 
 // given to = 0..100%, fade the LED panel to the matching level
-void fade(int to, bool automap=true)
+void fade(int to, bool automap = true)
 {
   int step = 5;
-  
-  // Automatically map from highest / lowest values seen on light sensor 
+
+  // Automatically map from highest / lowest values seen on light sensor
   if (automap) {
     to = map(to, 0, 100, LED_PANEL_MIN_LEVEL, LED_PANEL_MAX_LEVEL);
   } else {
     to = constrain(to, LED_PANEL_MIN_LEVEL, LED_PANEL_MAX_LEVEL);
   }
-  
+
   if (to < brightness)
     step = -step;
-    
-  while (abs(to-brightness) > abs(step)) {
+
+  while (abs(to - brightness) > abs(step)) {
     brightness = constrain(brightness + step, LED_PANEL_MIN_LEVEL, LED_PANEL_MAX_LEVEL);
     analogWrite(LED_PANEL_PIN, brightness);
     delay(30);
@@ -89,61 +89,63 @@ void incomingMessage(const MyMessage &message) {
   Serial.print("Incoming change for sensor:");
   Serial.println(message.sensor);
   // We only expect one type of message from controller. But we better check anyway.
-  if (message.type==V_LIGHT) {
-     // Change relay state
-     led_panel_on = message.getBool();
-     // Store state in eeprom
-     gw.saveState(EEPROM_ADDR(message.sensor), message.getBool());
-     // Write some debug info
-     Serial.print("LED Panel new status: ");
-     Serial.println(message.getBool());
-     if (led_panel_on) {
-       // set to min level
-       fade(0, false);
-     } else {
-       // go to min
-       fade(0, false);
-       // then turn off completely
-       analogWrite(LED_PANEL_PIN, 0);
-     }
-   } 
+  if (message.type == V_LIGHT && message.sensor == CHILD_ID_LED_PANEL) {
+    if (message.getBool() != led_panel_on) {
+      // Change relay state
+      led_panel_on = message.getBool();
+      // Store state in eeprom
+      gw.saveState(EEPROM_ADDR(message.sensor), message.getBool());
+      // Write some debug info
+      Serial.print("LED Panel new status: ");
+      Serial.println(message.getBool());
+      if (led_panel_on) {
+        // set to min level
+        fade(0, false);
+      } else {
+        // go to min
+        fade(0, false);
+        // then turn off completely
+        analogWrite(LED_PANEL_PIN, 0);
+      }
+    }
+  }
 }
 
-void setup()  
-{ 
+void setup()
+{
   gw.begin(incomingMessage, AUTO, true);
   // Send the Sketch Version Information to the Gateway
-  gw.sendSketchInfo("Breadboard", "2.3");
+  gw.sendSketchInfo("Breadboard", "2.4");
   // Will be done in Loop
   //presentSensors();
   metric = gw.getConfig().isMetric;
-  
+
   // DHT setup
-  dht.setup(DHT_SENSOR_DIGITAL_PIN); 
+  dht.setup(DHT_SENSOR_DIGITAL_PIN);
 
   // LED Panel setup
   pinMode(LED_PANEL_PIN, OUTPUT);
   led_panel_on = gw.loadState(EEPROM_ADDR(CHILD_ID_LED_PANEL));
   light_min = gw.loadState(EEPROM_ADDR(CHILD_ID_LIGHT));
-  light_max = gw.loadState(EEPROM_ADDR(CHILD_ID_LIGHT)+1);
+  light_max = gw.loadState(EEPROM_ADDR(CHILD_ID_LIGHT) + 1);
 }
 
-void loop()      
-{  
+void loop()
+{
   static unsigned long nextPresent = 0;
   static unsigned long nextDHTSample = 0;
   static unsigned long nextSample = 0;
 
   // Process incoming messages
   gw.process();
-  
+
   // Every once in a while make sure the gateway knows about our sensors.
   // TODO: Is retransmit necessary?
   if (millis() > nextPresent) {
     presentSensors();
     nextPresent += SENSOR_PRESENTATION_PERIOD;
   }
-  
+
   if (millis() > nextSample) {
     nextSample += SLEEP_TIME;
 
@@ -151,10 +153,10 @@ void loop()
       delay(nextDHTSample - millis());
     }
     nextDHTSample = millis() + dht.getMinimumSamplingPeriod() + 100/*fudge*/;
-  
+
     float temperature = dht.getTemperature();
     if (isnan(temperature)) {
-        Serial.println("Failed reading temperature from DHT");
+      Serial.println("Failed reading temperature from DHT");
     } else if (temperature != lastTemp) {
       lastTemp = temperature;
       if (!metric) {
@@ -167,22 +169,22 @@ void loop()
       Serial.print("T: ");
       Serial.println(temperature);
     }
-    
+
     float humidity = dht.getHumidity();
     if (isnan(humidity)) {
-        Serial.println("Failed reading humidity from DHT");
+      Serial.println("Failed reading humidity from DHT");
     } else if (humidity != lastHum) {
-        lastHum = humidity;
-        if (!gw.send(msgHum.set(humidity, 1))) {
-          // If packet transmission failed then force a retransmit on next reading
-          lastHum = NAN;
-        }
-        Serial.print("H: ");
-        Serial.println(humidity);
+      lastHum = humidity;
+      if (!gw.send(msgHum.set(humidity, 1))) {
+        // If packet transmission failed then force a retransmit on next reading
+        lastHum = NAN;
+      }
+      Serial.print("H: ");
+      Serial.println(humidity);
     }
 
     // Get raw light level
-    int lightLevel = (1023-analogRead(LIGHT_SENSOR_ANALOG_PIN))/10.23; 
+    int lightLevel = (1023 - analogRead(LIGHT_SENSOR_ANALOG_PIN)) / 10.23;
     // and update extremes if necessary
     if (lightLevel < light_min) {
       light_min = lightLevel;
@@ -190,9 +192,9 @@ void loop()
     }
     if (lightLevel > light_max) {
       light_max = lightLevel;
-      gw.saveState(EEPROM_ADDR(CHILD_ID_LIGHT)+1, light_max);
+      gw.saveState(EEPROM_ADDR(CHILD_ID_LIGHT) + 1, light_max);
     }
-    
+
     // map light level against historical min/max
     lightLevel = map(lightLevel, light_min, light_max, 0, 100);
 #if 0
@@ -204,11 +206,11 @@ void loop()
     Serial.print("L: ");
     Serial.println(lightLevel);
     if (lightLevel != lastLightLevel) {
-        if (!gw.send(msgLight.set(lightLevel))) {
-          lastLightLevel = -1; // force retransmit next round
-        } else {
-          lastLightLevel = lightLevel;
-        }
+      if (!gw.send(msgLight.set(lightLevel))) {
+        lastLightLevel = -1; // force retransmit next round
+      } else {
+        lastLightLevel = lightLevel;
+      }
     }
 
     int distus = sonar.ping_median();
@@ -240,11 +242,11 @@ void loop()
     Serial.print(dist); // Convert ping time to distance in cm and print result (0 = outside set distance range)
     Serial.println(metric ? " cm" : " in");
     if (dist != lastDist) {
-        gw.send(msgDist.set(dist));
-        lastDist = dist;
+      gw.send(msgDist.set(dist));
+      lastDist = dist;
     }
   }
-  
+
 #if 0
   int distus = sonar.ping_median();
   int distcm = sonar.convert_cm(distus);
