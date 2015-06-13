@@ -105,9 +105,10 @@ void Node::update()
 // Handle incoming packets from the network
 void Node::processIncoming(const MyMessage &msg) 
 {
+    int i;
     printf("Node: Incoming packet\n");
     
-    for (int i = 0; i < m_num_sensors; i++) {
+    for (i = 0; i < m_num_sensors; i++) {
         // Give each sensor a chance to handle the packet. 
         // If a sensor returns true, it has completely handled the 
         // packet.
