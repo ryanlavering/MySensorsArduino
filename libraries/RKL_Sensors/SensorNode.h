@@ -8,7 +8,7 @@
 // Definitions
 // Bump these values if you need more stuff attached to a given node
 #define MAX_SENSORS 10
-#define MAX_SUB_DEVICES 4
+#define MAX_SUB_DEVICES 2
 
 // Give each sensor 4 bytes in EEPROM
 #define EEPROM_ADDR(sensor_id) (sensor_id * 4)
@@ -35,10 +35,13 @@ class Node : public MySensor {
         */
         
         // Add a new device
-        bool addSensor(Sensor *sensor, bool do_present=false);
+        bool addSensor(Sensor *sensor);
+        
+        // Set automatic device id(s)
+        void assignDeviceIds(Device *d);
         
         // Present devices
-        void present(Device *d, uint8_t sub_device=0, bool ack=false);
+        void presentDevice(Sensor *s, uint8_t sub_device=0, bool ack=false);
         void presentAll(bool ack=false);
         
         // Update the node scheduler. 
@@ -59,10 +62,6 @@ class Node : public MySensor {
         //     node.processIncoming(msg); // where 'node' is your Node instance
         // }
         void processIncoming(const MyMessage &msg);
-        
-    protected:
-        // Set automatic device id(s)
-        void assignDeviceIds(Device *d);
         
     private:
         Sensor *m_sensors[MAX_SENSORS];
@@ -113,48 +112,59 @@ class Device {
 // Abstract base class for generic sensors
 class Sensor : public Device {
     public:
-        Sensor(uint8_t type, uint8_t dtype, uint8_t id=AUTO, uint8_t num_sub_devices=1) : Device(type, dtype, id, num_sub_devices) {};
+        Sensor(Node *gw, uint8_t type, uint8_t dtype, uint8_t id=AUTO, 
+                    uint8_t num_sub_devices=1) 
+                : Device(type, dtype, id, num_sub_devices),
+                    m_gw(gw)
+        {
+            // pass
+        }
 
+        // Do any special presentation logic necessary for this sensor
+        // @return true if presentation is completely handled by this method.
+        //      If this returns false, then the Node will do default 
+        //      presentation logic (It is permissible to do partial 
+        //      presentation in this function and return false to finish 
+        //      with the default presentation.)
+        virtual bool present() { return false; }
+        
         // Is data ready to sense?
-        // This function should return true if conditions are right to 
-        // take a new reading. Used by the scheduler to determine if it should 
-        // take a sensor reading. 
-        // @param next_check_ms -- [Output] Optionally return number of 
-        // ms for next ready time. (I.e. don't check again for x ms)
-        virtual bool ready(unsigned long *next_check_ms=NULL) { return false; } 
+        // @return true if conditions are right to take a new reading. 
+        //      Used by the scheduler to determine if it should 
+        //      request a sensor reading. 
+        // @param next_check_ms -- [Output] Optionally return absolute time  
+        //      (in ms) for next ready time. (I.e. don't check again until 
+        //      millis() >= *next_check_ms.)
+        //      Only valid if function returns false.
+        virtual bool ready(unsigned long *next_check_ms=NULL) 
+        { 
+            // Default version of this function will never return true, so
+            // if the scheduler is paying attention to next_check_ms then 
+            // send it the maximum possible value so it won't waste time
+            // polling this device.
+            if (next_check_ms != NULL) { *next_check_ms = (unsigned long)-1; }
+            return false; 
+        } 
         
         // Take a reading. 
-        // Return true if there is new data to report, or false 
-        // if the reading is still in progress or there is no new data to 
-        // report.
+        // @return true if there is new data to report, or false 
+        //      if the reading is still in progress or there is no new data to 
+        //      report.
         virtual bool sense() { return false; } 
         
         // report data upstream 
-        // Return true if the upstream data report was completed successfully
-        virtual bool report(MySensor *gw) { return false; } 
+        // @return true if the upstream data report was completed successfully
+        virtual bool report() { return false; } 
         
         // Handle the incoming message. 
-        // Return true iff the packet was handled and no one else needs to 
-        // process it.
-        // Return false if the packet is not destined for this reactor, OR if 
-        // the packet should be handled by other reactors.
+        // @return true iff the packet was handled and no one else needs to 
+        //      process it. Return false if the packet is not destined for 
+        //      this reactor, OR if the packet should be handled by other 
+        //      reactors.
         virtual bool react(const MyMessage &msg) { return false; }
         
     protected:
-        // none
-};
-
-// Base class for interval-based sensors
-class IntervalSensor : public Sensor {
-    public:
-        IntervalSensor(unsigned long interval, uint8_t type, uint8_t dtype, uint8_t id=AUTO, uint8_t num_sub_devices=1);
-        virtual bool ready(unsigned long *next_check_ms=NULL);
-        unsigned long nextTimeout() { return m_next_timeout; }
-    
-    private:
-        unsigned long m_interval; // interval, in ms
-        unsigned long m_next_timeout; // when does the next timeout occur?
-        //unsigned long m_avg_runtime;
+        Node *m_gw;
 };
 
 #endif /* SENSOR_NODE_H */

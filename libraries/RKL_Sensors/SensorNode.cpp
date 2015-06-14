@@ -30,15 +30,17 @@ void Node::begin(void (* msgCallback)(const MyMessage &), uint8_t nodeId,
 }
 */
 
-// Present a device
+// Present a sub-device
 // Will set a device id automatically if necessary.
-void Node::present(Device *d, uint8_t sub_device, bool ack) 
+void Node::presentDevice(Sensor *s, uint8_t sub_device, bool ack) 
 {
     // make sure device has a proper ID
-    if (d->getId(sub_device) == AUTO) {
-        d->setId(next_device_id++, sub_device);
+    if (s->getId(sub_device) == AUTO) {
+        s->setId(next_device_id++, sub_device);
     }
-    MySensor::present(d->getId(sub_device), d->getType(sub_device), ack);
+    if (!s->present()) {
+        present(s->getId(sub_device), s->getType(sub_device), ack);
+    }
 }
 
 void Node::presentAll(bool ack)
@@ -46,21 +48,20 @@ void Node::presentAll(bool ack)
     for (int i = 0; i < m_num_sensors; i++) {
         Sensor *s = m_sensors[i];
         assignDeviceIds(s); // make sure all devices have a proper ID
-        for (int j = 0; j < s->getNumSubDevices(); j++) {
-            MySensor::present(s->getId(j), s->getType(j), ack);
+        if (!s->present()) {
+            for (int j = 0; j < s->getNumSubDevices(); j++) {
+                present(s->getId(j), s->getType(j), ack);
+            }
         }
     }
 }
 
-bool Node::addSensor(Sensor *sensor, bool do_present) 
+bool Node::addSensor(Sensor *sensor) 
 {
     if (sensor == NULL || m_num_sensors >= MAX_SENSORS)
         return false;
     m_sensors[m_num_sensors++] = sensor;
     assignDeviceIds(sensor); // fill in any device IDs that request AUTO
-    if (do_present) {
-        present(sensor);
-    }
     return true;
 }
 
@@ -90,13 +91,14 @@ void Node::update()
     // Now process any sensors that report ready 
     for (int i = 0; i < m_num_sensors; i++) {
         if (m_sensors[i]->ready()) {
-            printf("Node: Sensor %d reports ready.\n", i);
             // Sensors might take some time to respond, only report if 
             // sense() reports data ready
             bool done = m_sensors[i]->sense();
             if (done) {
-                printf("\tReading complete. Reporting to base...");
-                m_sensors[i]->report(this);
+                Serial.print("Sensor ");
+                Serial.print(i);
+                Serial.println(" reporting to base");
+                m_sensors[i]->report();
             }
         }
     }
@@ -106,18 +108,20 @@ void Node::update()
 void Node::processIncoming(const MyMessage &msg) 
 {
     int i;
-    printf("Node: Incoming packet\n");
+    Serial.print("Incoming packet for device ");
+    Serial.println(msg.sensor);
     
     for (i = 0; i < m_num_sensors; i++) {
         // Give each sensor a chance to handle the packet. 
         // If a sensor returns true, it has completely handled the 
         // packet.
         if (m_sensors[i]->react(msg)) {
-            printf("\tHandled by sensor %d\n", i);
+            Serial.print("\tHandled by sensor");
+            Serial.println(i);
             break;
         }
     }
-    if (i == m_num_sensors) printf("\nNot handled or global.\n");
+    if (i == m_num_sensors) Serial.println("\tNot handled or global.");
 }
 
 
@@ -129,7 +133,7 @@ Device::Device(uint8_t type, uint8_t dtype, uint8_t id, uint8_t num_sub_devices)
 {
     if (num_sub_devices > MAX_SUB_DEVICES) {
         // error
-        printf("Too many devices specified (%d)\n", num_sub_devices);
+        Serial.println("Too many devices specified");
         return;
     }
     
@@ -184,30 +188,4 @@ uint8_t Device::getNumSubDevices()
 {
     return m_num_sub_devices;
 }
-
-
-//
-// Interval sensors
-//
-IntervalSensor::IntervalSensor(unsigned long interval, uint8_t type, 
-            uint8_t dtype, uint8_t id, uint8_t num_sub_devices)
-        : Sensor(type, dtype, id, num_sub_devices), m_interval(interval)
-{
-    m_next_timeout = millis(); // now
-}
-
-bool IntervalSensor::ready(unsigned long *next_check_ms) 
-{
-    unsigned long now = millis();
-    if (now > m_next_timeout) {
-        m_next_timeout += m_interval;
-        return true;
-    } else {
-        if (next_check_ms != NULL) {
-            *next_check_ms = m_next_timeout;
-        }
-        return false;
-    }
-}
-
 
