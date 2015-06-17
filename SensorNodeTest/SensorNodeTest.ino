@@ -12,9 +12,10 @@
 Node node;
 
 // Create sensor instances
-PresetationMetaSensor pres(&node);
+PresentationMetaSensor pres(&node);
 HeartBeatSensor hb(&node, AUTO, 30000);
 SimpleIconLedMatrix led(&node);
+PresenceSensor presence(&node);
 
 // Must provide this callback function to process messages. 
 void incomingMessage(const MyMessage &msg) {
@@ -27,6 +28,7 @@ void setup() {
   node.addSensor(&pres);
   node.addSensor(&hb);
   node.addSensor(&led);
+  node.addSensor(&presence);
   node.presentAll();
 }
 

@@ -19,9 +19,9 @@ class IntervalSensor : public Sensor {
 
 // Periodic Presentation meta-sensor
 #define PRESENTATION_PERIOD (5*60*1000)
-class PresetationMetaSensor : public IntervalSensor {
+class PresentationMetaSensor : public IntervalSensor {
     public:
-        PresetationMetaSensor(Node *gw, unsigned long interval = PRESENTATION_PERIOD);
+        PresentationMetaSensor(Node *gw, unsigned long interval = PRESENTATION_PERIOD);
         // Always report that sensor reading available
         virtual bool sense() { return true; }
         virtual bool report();
@@ -110,6 +110,30 @@ class SimpleIconLedMatrix : public Sensor {
         LedControl m_lc;
         uint8_t m_brightness;
         uint8_t m_icon;
+};
+
+
+//
+// PIR Presence Sensor
+//
+#define PRESENCE_SENSOR_PIN 3 // The digital input you attached your motion sensor.  (Only 2 and 3 generates interrupt!)
+#define PRESENCE_SENSOR_WARM_UP (15*1000) // warm up time
+
+class PresenceSensor : public Sensor {
+    public:
+        PresenceSensor(Node *gw, uint8_t device_id=AUTO,
+                    int sense_pin=PRESENCE_SENSOR_PIN);
+                    
+        virtual bool ready(unsigned long *next_check_ms=NULL);
+        virtual bool sense();
+        virtual bool report();
+        
+        int getInterrupt();
+        
+    private:
+        bool m_tripped;
+        bool m_warm_up_done;
+        bool m_sense_pin;
 };
 
 #endif

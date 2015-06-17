@@ -31,21 +31,21 @@ bool IntervalSensor::ready(unsigned long *next_check_ms)
 // Presentation meta-sensor
 // Periodically triggers presentation of all node devices to controller
 //
-PresetationMetaSensor::PresetationMetaSensor(Node *gw, unsigned long interval)
+PresentationMetaSensor::PresentationMetaSensor(Node *gw, unsigned long interval)
         : IntervalSensor(gw, interval, S_CUSTOM, V_VAR1, AUTO, 0)
 {
     //Serial.println("Start: PresMeta");
 }
 
-bool PresetationMetaSensor::report()
+bool PresentationMetaSensor::report()
 {
     // Skip very first reading to prevent double-presentation (Node does 
     // the first present)
-    static bool skip = True; 
+    static bool skip = true; 
     if (!skip) {
         m_gw->presentAll();
     }
-    skip = False;
+    skip = false;
 }
 
 
@@ -270,5 +270,59 @@ void SimpleIconLedMatrix::draw(const byte *ico) {
     for (int i = 0; i < 8; i++) {
         // display is upside down, so 7-i
         m_lc.setColumn(0, FLIP(i), ico[i]);
+    }
+}
+
+
+//
+// Presence Sensor
+//
+PresenceSensor::PresenceSensor(Node *gw, uint8_t device_id, int sense_pin)
+        : Sensor(gw, S_LIGHT, V_LIGHT, device_id, 1),
+            m_sense_pin(sense_pin),
+            m_tripped(false)
+{
+    pinMode(sense_pin, INPUT);
+    m_warm_up_done = millis() + PRESENCE_SENSOR_WARM_UP;
+}
+    
+bool PresenceSensor::ready(unsigned long *next_check_ms)
+{
+    if (millis() > m_warm_up_done) {
+        return true;
+    } else {
+        if (next_check_ms != NULL) {
+            *next_check_ms = m_warm_up_done;
+        }
+        return false;
+    }
+}
+    
+bool PresenceSensor::sense()
+{
+    bool current = (digitalRead(m_sense_pin) == HIGH); 
+    if (current != m_tripped) {
+        // Value changed since last reading
+        m_tripped = current;
+        return true;
+    } else {
+        // Nothing to report
+        return false;
+    }
+}
+
+bool PresenceSensor::report()
+{
+    return m_gw->send(getMessage().set(m_tripped));
+}
+
+int PresenceSensor::getInterrupt()
+{ 
+    if (m_sense_pin == 2 || m_sense_pin == 3) {
+        // Assume we're on nano/micro/uno where pin<->interrupt mapping is 
+        // trivial 
+        return m_sense_pin - 2; 
+    } else {
+        return -1;
     }
 }
