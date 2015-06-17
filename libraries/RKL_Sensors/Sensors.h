@@ -117,7 +117,12 @@ class SimpleIconLedMatrix : public Sensor {
 // PIR Presence Sensor
 //
 #define PRESENCE_SENSOR_PIN 3 // The digital input you attached your motion sensor.  (Only 2 and 3 generates interrupt!)
-#define PRESENCE_SENSOR_WARM_UP (15*1000) // warm up time
+#define PRESENCE_SENSOR_WARM_UP (15*1000UL) // warm up time
+#define PRESENCE_ONLY_SEND_ON 0 // if 1, only send "on" messages; controller will turn off
+#define PRESENCE_OFF_DELAY (60*1000UL) // only send off if no "on" signal within 60 seconds
+#define PRESENCE_TIMER_OFF (-1UL)
+
+#define PRESENCE_DEBUG 1
 
 class PresenceSensor : public Sensor {
     public:
@@ -134,6 +139,7 @@ class PresenceSensor : public Sensor {
         bool m_tripped;
         unsigned long m_warm_up_done;
         int m_sense_pin;
+        unsigned long m_off_after;
 };
 
 #endif

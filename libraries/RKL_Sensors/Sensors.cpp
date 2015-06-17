@@ -282,7 +282,8 @@ void SimpleIconLedMatrix::draw(const byte *ico) {
 PresenceSensor::PresenceSensor(Node *gw, uint8_t device_id, int sense_pin)
         : Sensor(gw, S_LIGHT, V_LIGHT, device_id, 1),
             m_sense_pin(sense_pin),
-            m_tripped(false)
+            m_tripped(false),
+            m_off_after(PRESENCE_TIMER_OFF)
 {
     pinMode(sense_pin, INPUT);
     m_warm_up_done = millis() + PRESENCE_SENSOR_WARM_UP;
@@ -302,14 +303,47 @@ bool PresenceSensor::ready(unsigned long *next_check_ms)
     
 bool PresenceSensor::sense()
 {
+    bool offTimerWasActive = (m_off_after != PRESENCE_TIMER_OFF);
     bool current = (digitalRead(m_sense_pin) == HIGH); 
     if (current != m_tripped) {
         // Value changed since last reading
+#if PRESENCE_DEBUG
+        Serial.println(current ? "Motion detected" : "All quiet");
+#endif
         m_tripped = current;
-        return true;
+        if (m_tripped) {
+            // (re)set the timer
+            m_off_after = millis() + PRESENCE_OFF_DELAY;
+#if PRESENCE_DEBUG
+            Serial.print("Off time: ");
+            Serial.println(m_off_after);
+#endif
+        }
+#if 0
+        if (m_tripped && offTimerWasActive) {
+            // we changed to "on", but hadn't yet reported the "off", so 
+            // no state change needed
+            return false;
+        } else 
+#endif
+        {
+            // changed to "on" from reported "off" state, 
+            // or changed to "off". 
+            return m_tripped; // only send an "on" signal right away
+        }
     } else {
-        // Nothing to report
-        return false;
+        if (millis() > m_off_after) {
+            m_tripped = false; // set to off
+            m_off_after = PRESENCE_TIMER_OFF; // disable timer
+#if PRESENCE_DEBUG
+            Serial.print("Sending off at ");
+            Serial.println(millis());
+#endif
+            return true; // send the off signal now
+        } else {
+            // nothing to report
+            return false; 
+        }
     }
 }
 
