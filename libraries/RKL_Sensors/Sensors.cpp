@@ -109,8 +109,10 @@ bool DHT22Sensor::sense()
     // Is there anything new to report?
     bool new_data = ((abs(temp - m_lastTemp) > 0.1) || (abs(hum - m_lastHum) > 0.1));
     
-    m_lastTemp = temp;
-    m_lastHum = hum;
+    if (new_data) {
+        m_lastTemp = temp;
+        m_lastHum = hum;
+    }
     
     return new_data;
 }

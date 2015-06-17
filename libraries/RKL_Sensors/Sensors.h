@@ -132,8 +132,8 @@ class PresenceSensor : public Sensor {
         
     private:
         bool m_tripped;
-        bool m_warm_up_done;
-        bool m_sense_pin;
+        unsigned long m_warm_up_done;
+        int m_sense_pin;
 };
 
 #endif
