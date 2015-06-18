@@ -319,7 +319,7 @@ bool PresenceSensor::sense()
             Serial.println(m_off_after);
 #endif
         }
-#if 0
+#if 0 // Bad idea because packets could be lost. Better to transmit more often.
         if (m_tripped && offTimerWasActive) {
             // we changed to "on", but hadn't yet reported the "off", so 
             // no state change needed
@@ -349,7 +349,13 @@ bool PresenceSensor::sense()
 
 bool PresenceSensor::report()
 {
-    return m_gw->send(getMessage().set(m_tripped));
+    bool ok = m_gw->send(getMessage().set(m_tripped));
+    if (!ok && !m_tripped) {
+        // "Off" signal lost. Make sure to resend next round.
+        m_off_after = 0;
+    }
+    
+    return ok;
 }
 
 int PresenceSensor::getInterrupt()
