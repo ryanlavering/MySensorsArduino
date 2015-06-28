@@ -18,7 +18,7 @@ class IntervalSensor : public Sensor {
 
 
 // Periodic Presentation meta-sensor
-#define PRESENTATION_PERIOD (5*60*1000)
+#define PRESENTATION_PERIOD (5*60*1000UL)
 class PresentationMetaSensor : public IntervalSensor {
     public:
         PresentationMetaSensor(Node *gw, unsigned long interval = PRESENTATION_PERIOD);
@@ -135,11 +135,59 @@ class PresenceSensor : public Sensor {
         
         int getInterrupt();
         
+        // Was motion detected recently? Relies on reading from last sense() call.
+        bool motionDetected();
+        
     private:
         bool m_tripped;
         unsigned long m_warm_up_done;
         int m_sense_pin;
         unsigned long m_off_after;
 };
+
+#if 1
+//
+// LED Light
+//
+#define LED_MIN_LEVEL 0
+#define LED_MAX_LEVEL 255
+//#define LED_MAX_LEVEL 127
+#define LED_FADE_AUTO 0
+#define LED_FADE_DELTA LED_FADE_AUTO // auto-delta
+#define LED_FADE_NUMSTEPS 32
+#define LED_FADE_DELAY 32
+#define LED_ON true
+#define LED_OFF false
+
+class LEDLight : public Sensor {
+    public:
+        LEDLight(Node *gw, int pwm_pin, uint8_t device_id=AUTO);
+        virtual bool react(const MyMessage &msg);
+        void fade(uint8_t to, int delta=LED_FADE_DELTA, bool raw_value=false);
+        void setState(bool on);
+        
+    private:
+        int m_pin;
+        uint8_t m_brightness;
+        bool m_on;
+};
+#endif
+
+#if 0
+//
+// Analog Photoresistor Light Level Sensor
+//
+class PhotoResistorSensor : public Sensor {
+    public:
+        PhotoResistorSensor(Node *gw, int analog_pin, uint8_t device_id=AUTO);
+        
+        virtual bool ready(unsigned long *next_check_ms=NULL) { return true; }
+        virtual bool sense();
+        virtual bool report();
+        
+    private:
+        int m_analog_pin;
+};
+#endif
 
 #endif

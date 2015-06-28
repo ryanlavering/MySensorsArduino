@@ -368,3 +368,116 @@ int PresenceSensor::getInterrupt()
         return -1;
     }
 }
+
+bool PresenceSensor::motionDetected()
+{
+    return m_tripped;
+}
+
+#if 1
+
+//
+// LED Light
+//
+LEDLight::LEDLight(Node *gw, int pwm_pin, uint8_t device_id)
+        : Sensor(gw, S_LIGHT, V_DIMMER/*not used*/, device_id, 1),
+            m_pin(pwm_pin),
+            m_brightness(0),
+            m_on(false)
+{
+    // Make sure that subdevices have real IDs assigned before we call getId()
+    m_gw->assignDeviceIds(this);
+    
+    // Get the initial value from EEPROM
+    m_brightness = constrain(m_gw->loadState(EEPROM_ADDR(getId())), LED_MIN_LEVEL, LED_MAX_LEVEL);
+
+    // Set up output pin and initial state (off)
+    pinMode(m_pin, OUTPUT);
+    analogWrite(m_pin, 0); // light off by default
+}
+
+// given to = 0..100%, fade the LED panel to the matching level
+void LEDLight::fade(uint8_t to, int delta, bool raw_value)
+{
+    uint8_t curr = (m_on ? m_brightness : 0);
+    
+    // calculate automatic delta value for smooth transitions that take a 
+    // bounded amount of time
+    if (delta == LED_FADE_AUTO) {
+        delta = max(abs(to-curr) / LED_FADE_NUMSTEPS, 1);
+    }
+    
+    if (raw_value) {
+        to = constrain(to, LED_MIN_LEVEL, LED_MAX_LEVEL);
+    } else {
+        to = constrain(to, 0, 100);
+        to = map(to, 0, 100, LED_MIN_LEVEL, LED_MAX_LEVEL);
+    }
+
+    if ((to < curr && delta > 0) || (to > curr && delta < 0)) {
+        // reverse direction
+        delta = -delta;
+    }
+
+    while (curr != to) {
+        curr = constrain(curr + delta, min(curr, to), max(curr, to));
+        analogWrite(m_pin, curr);
+        delay(LED_FADE_DELAY);
+    }
+}
+
+bool LEDLight::react(const MyMessage &msg)
+{
+    // Controller might send V_DIMMER (for dimmer setting change) 
+    // or V_LIGHT (on/off switch) 
+    if ((msg.type == V_DIMMER || msg.type == V_LIGHT) && msg.sensor == getId()) {    
+        //  Retrieve the power or dim level from the incoming request message
+        int requestedLevel = atoi( msg.data );
+        
+        Serial.print("Requested level: ");
+        Serial.println(requestedLevel);
+        
+        // Adjust incoming level if this is a V_LIGHT variable update [0 == off, 1 == on]
+        if (msg.type == V_LIGHT && requestedLevel == 1) {
+            requestedLevel = m_brightness;
+        } else {
+            // Clip incoming level to valid range of 0 to 100
+            requestedLevel = constrain(requestedLevel, 0, 100);
+            // And map to actual LED array levels
+            requestedLevel = map(requestedLevel, 0, 100, LED_MIN_LEVEL, LED_MAX_LEVEL);
+        }
+        
+        int setting_on = (requestedLevel != 0);
+        if (setting_on) {
+            // Only save brightness to last "on" value
+            m_gw->saveState(EEPROM_ADDR(msg.sensor), (uint8_t)requestedLevel);
+        }
+
+        // Write some debug info
+        Serial.print("LED Panel new status: ");
+        Serial.println(setting_on ? requestedLevel : 0);
+
+        // Set the actual brightness (will update m_brightness)
+        fade(setting_on ? requestedLevel : 0, LED_FADE_AUTO, true);
+        
+        // And update the state after fading (fade uses m_on for its current
+        // brightness level, so we don't want to update until after the fade)
+        m_on = setting_on;
+        if (m_on) {
+            m_brightness = (uint8_t)requestedLevel;
+        }
+        
+        // Message handled
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void LEDLight::setState(bool on)
+{
+    fade(on ? m_brightness : 0, LED_FADE_AUTO, true);
+    m_on = on;
+}
+
+#endif

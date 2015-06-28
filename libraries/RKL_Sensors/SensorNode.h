@@ -2,8 +2,8 @@
 #define SENSOR_NODE_H
 
 // Includes
-#include "MySensor.h"
-#include "MyMessage.h"
+#include "../MySensors/MySensor.h"
+#include "../MySensors/MyMessage.h"
 
 // Definitions
 // Bump these values if you need more stuff attached to a given node
