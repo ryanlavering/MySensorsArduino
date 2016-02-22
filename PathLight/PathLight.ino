@@ -8,25 +8,27 @@
 // Define the Node instance
 Node node;
 #define NODE_NAME "PathLight"
-#define NODE_VERSION "1.0"
+#define NODE_VERSION "1.1"
 #define NODE_IS_REPEATER true
+//#define NODE_ID AUTO
+#define NODE_ID 110
 
 // Define sensor instances
 PresentationMetaSensor presentation(&node);
 PresenceSensor presence(&node);
-LEDLight ledPanel(&node, 6);
+LEDLight led(&node, 5);
 
 // Add sensors to this table to have them automatically registered 
 Sensor *sensors[] = {
   &presentation,
   &presence,
-  &ledPanel,
+  &led,
 };
 
 void processRules() {
   // Make sure that LED light status reflects the presence sensor state
   // Could also be implemented in the controller
-  ledPanel.setState(presence.motionDetected());
+  led.setState(presence.motionDetected());
 }
 
 //
@@ -41,7 +43,7 @@ void incomingMessage(const MyMessage &msg) {
 }
 
 void setup() {
-  node.begin(incomingMessage, 102, NODE_IS_REPEATER);
+  node.begin(incomingMessage, NODE_ID, NODE_IS_REPEATER);
   node.sendSketchInfo(NODE_NAME, NODE_VERSION);
   for (int i = 0; i < NUM_SENSORS; i++) {
     node.addSensor(sensors[i]);
