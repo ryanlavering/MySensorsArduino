@@ -39,17 +39,8 @@ int oldBatteryPcnt = 0;
 
 void setup()  
 {
-<<<<<<< HEAD
    // use the 3.3 V Vcc reference
    analogReference(DEFAULT);
-=======
-   // use the 1.1 V internal reference
-#if defined(__AVR_ATmega2560__)
-   analogReference(INTERNAL1V1);
-#else
-   analogReference(INTERNAL);
-#endif
->>>>>>> 59550410a3f55f11b39aacfcaaa2dd8926682673
    gw.begin();
 
    // Send the sketch version information to the gateway and Controller
