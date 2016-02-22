@@ -1,26 +1,61 @@
-// Default sensor sketch for Sensebender Micro module
-// Act as a temperature / humidity sensor by default.
-//
-// If A0 is held low while powering on, it will enter testmode, which verifies all on-board peripherals
-// 
-// Battery voltage is repported as child sensorId 199, as well as battery percentage (Internal message)
+/**
+ * The MySensors Arduino library handles the wireless radio link and protocol
+ * between your home built sensors/actuators and HA controller of choice.
+ * The sensors forms a self healing radio network with optional repeaters. Each
+ * repeater and gateway builds a routing tables in EEPROM which keeps track of the
+ * network topology allowing messages to be routed to nodes.
+ *
+ * Created by Henrik Ekblad <henrik.ekblad@mysensors.org>
+ * Copyright (C) 2013-2015 Sensnology AB
+ * Full contributor list: https://github.com/mysensors/Arduino/graphs/contributors
+ *
+ * Documentation: http://www.mysensors.org
+ * Support Forum: http://forum.mysensors.org
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ *******************************
+ *
+ * REVISION HISTORY
+ * Version 1.0 - Thomas Bowman Mørch
+ * 
+ * DESCRIPTION
+ * Default sensor sketch for Sensebender Micro module
+ * Act as a temperature / humidity sensor by default.
+ *
+ * If A0 is held low while powering on, it will enter testmode, which verifies all on-board peripherals
+ *  
+ * Battery voltage is as battery percentage (Internal message), and optionally as a sensor value (See defines below)
+ *
+ *
+ * Version 1.3 - Thomas Bowman Mørch
+ * Improved transmission logic, eliminating spurious transmissions (when temperatuere / humidity fluctuates 1 up and down between measurements)
+ * 
+ * Added OTA boot mode, need to hold A1 low while applying power. (uses slightly more power as it's waiting for bootloader messages)
+ * 
+ */
 
 
 #include <MySensor.h>
 #include <Wire.h>
 #include <SI7021.h>
 #include <SPI.h>
-#include <SPIFlash.h>
+#include "utility/SPIFlash.h"
 #include <EEPROM.h>  
 #include <sha204_lib_return_codes.h>
 #include <sha204_library.h>
 #include <RunningAverage.h>
-#include <avr/power.h>
+//#include <avr/power.h>
 
 // Define a static node address, remove if you want auto address assignment
 //#define NODE_ADDRESS   3
 
-#define RELEASE "1.2"
+// Uncomment the line below, to transmit battery voltage as a normal sensor value
+//#define BATT_SENSOR    199
+
+#define RELEASE "1.3"
 
 #define AVERAGES 2
 
@@ -31,14 +66,23 @@
 // How many milli seconds between each measurement
 #define MEASURE_INTERVAL 60000
 
+// How many milli seconds should we wait for OTA?
+#define OTA_WAIT_PERIOD 300
+
 // FORCE_TRANSMIT_INTERVAL, this number of times of wakeup, the sensor is forced to report all values to the controller
 #define FORCE_TRANSMIT_INTERVAL 30 
 
 // When MEASURE_INTERVAL is 60000 and FORCE_TRANSMIT_INTERVAL is 30, we force a transmission every 30 minutes.
 // Between the forced transmissions a tranmission will only occur if the measured value differs from the previous measurement
 
+// HUMI_TRANSMIT_THRESHOLD tells how much the humidity should have changed since last time it was transmitted. Likewise with
+// TEMP_TRANSMIT_THRESHOLD for temperature threshold.
+#define HUMI_TRANSMIT_THRESHOLD 0.5
+#define TEMP_TRANSMIT_THRESHOLD 0.5
+
 // Pin definitions
 #define TEST_PIN       A0
+#define OTA_ENABLE     A1
 #define LED_PIN        A2
 #define ATSHA204_PIN   17 // A3
 
@@ -54,11 +98,17 @@ MySensor gw;
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 
+#ifdef BATT_SENSOR
+MyMessage msgBatt(BATT_SENSOR, V_VOLTAGE);
+#endif
+
 // Global settings
 int measureCount = 0;
 int sendBattery = 0;
 boolean isMetric = true;
 boolean highfreq = true;
+boolean ota_enabled = false; 
+boolean transmission_occured = false;
 
 // Storage of old measurements
 float lastTemperature = -100;
@@ -66,7 +116,6 @@ int lastHumidity = -100;
 long lastBattery = -100;
 
 RunningAverage raHum(AVERAGES);
-RunningAverage raTemp(AVERAGES);
 
 /****************************************************
  *
@@ -89,11 +138,19 @@ void setup() {
   digitalWrite(TEST_PIN, HIGH); // Enable pullup
   if (!digitalRead(TEST_PIN)) testMode();
 
+  pinMode(OTA_ENABLE, INPUT);
+  digitalWrite(OTA_ENABLE, HIGH);
+  if (!digitalRead(OTA_ENABLE)) {
+    ota_enabled = true;
+  }
+
   // Make sure that ATSHA204 is not floating
   pinMode(ATSHA204_PIN, INPUT);
   digitalWrite(ATSHA204_PIN, HIGH);
   
   digitalWrite(TEST_PIN,LOW);
+  digitalWrite(OTA_ENABLE, LOW); // remove pullup, save some power.
+  
   digitalWrite(LED_PIN, HIGH); 
 
 #ifdef NODE_ADDRESS
@@ -102,9 +159,10 @@ void setup() {
   gw.begin(NULL,AUTO,false);
 #endif
 
+  humiditySensor.begin();
+
   digitalWrite(LED_PIN, LOW);
 
-  humiditySensor.begin();
   Serial.flush();
   Serial.println(F(" - Online!"));
   gw.sendSketchInfo("Sensebender Micro", RELEASE);
@@ -112,12 +170,18 @@ void setup() {
   gw.present(CHILD_ID_TEMP,S_TEMP);
   gw.present(CHILD_ID_HUM,S_HUM);
   
+#ifdef BATT_SENSOR
+  gw.present(BATT_SENSOR, S_POWER);
+#endif
+
+  
   isMetric = gw.getConfig().isMetric;
   Serial.print(F("isMetric: ")); Serial.println(isMetric);
   raHum.clear();
-  raTemp.clear();
   sendTempHumidityMeasurements(false);
   sendBattLevel(false);
+  if (ota_enabled) Serial.println("OTA FW update enabled");
+
 }
 
 
@@ -127,13 +191,14 @@ void setup() {
  *
  ***********************************************/
 void loop() {
+  
   measureCount ++;
   sendBattery ++;
   bool forceTransmit = false;
-  
+  transmission_occured = false;
   if ((measureCount == 5) && highfreq) 
   {
-    clock_prescale_set(clock_div_8); // Switch to 1Mhz for the reminder of the sketch, save power.
+    if (!ota_enabled) clock_prescale_set(clock_div_8); // Switch to 1Mhz for the reminder of the sketch, save power.
     highfreq = false;
   } 
   
@@ -150,7 +215,11 @@ void loop() {
      sendBattLevel(forceTransmit); // Not needed to send battery info that often
      sendBattery = 0;
   }
-  
+
+  if (ota_enabled & transmission_occured) {
+      gw.wait(OTA_WAIT_PERIOD);
+  }
+
   gw.sleep(MEASURE_INTERVAL);  
 }
 
@@ -166,23 +235,20 @@ void loop() {
 void sendTempHumidityMeasurements(bool force)
 {
   bool tx = force;
-  
+
   si7021_env data = humiditySensor.getHumidityAndTemperature();
-  float oldAvgTemp = raTemp.getAverage();
-  float oldAvgHum = raHum.getAverage();
   
-  raTemp.addValue(data.celsiusHundredths / 100);
   raHum.addValue(data.humidityPercent);
   
-  float diffTemp = abs(oldAvgTemp - raTemp.getAverage());
-  float diffHum = abs(oldAvgHum - raHum.getAverage());
+  float diffTemp = abs(lastTemperature - (isMetric ? data.celsiusHundredths : data.fahrenheitHundredths)/100);
+  float diffHum = abs(lastHumidity - raHum.getAverage());
 
-  Serial.println(diffTemp);
-  Serial.println(diffHum); 
+  Serial.print(F("TempDiff :"));Serial.println(diffTemp);
+  Serial.print(F("HumDiff  :"));Serial.println(diffHum); 
 
-  if (isnan(diffTemp)) tx = true; 
-  if (diffTemp > 0.2) tx = true;
-  if (diffHum > 0.5) tx = true;
+  if (isnan(diffHum)) tx = true; 
+  if (diffTemp > TEMP_TRANSMIT_THRESHOLD) tx = true;
+  if (diffHum > HUMI_TRANSMIT_THRESHOLD) tx = true;
 
   if (tx) {
     measureCount = 0;
@@ -196,6 +262,7 @@ void sendTempHumidityMeasurements(bool force)
     gw.send(msgHum.set(humidity));
     lastTemperature = temperature;
     lastHumidity = humidity;
+    transmission_occured = true;
   }
 }
 
@@ -213,12 +280,18 @@ void sendBattLevel(bool force)
   long vcc = readVcc();
   if (vcc != lastBattery) {
     lastBattery = vcc;
+
+#ifdef BATT_SENSOR
+    gw.send(msgBatt.set(vcc));
+#endif
+
     // Calculate percentage
 
     vcc = vcc - 1900; // subtract 1.9V from vcc, as this is the lowest voltage we will operate at
     
     long percent = vcc / 14.0;
     gw.sendBatteryLevel(percent);
+    transmission_occured = true;
   }
 }
 
@@ -251,6 +324,7 @@ long readVcc() {
  
   result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
   return result; // Vcc in millivolts
+ 
 }
 
 /****************************************************
