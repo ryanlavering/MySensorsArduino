@@ -2,6 +2,7 @@
 #define RKL_SENSORS_H
 
 #include <SensorNode.h>
+#include <math.h>
 
 // Base class for interval-based sensors
 class IntervalSensor : public Sensor {
@@ -152,7 +153,7 @@ class PresenceSensor : public Sensor {
 #define LED_MIN_LEVEL 0
 #define LED_MAX_LEVEL 255
 //#define LED_MAX_LEVEL 127
-#define LED_FADE_AUTO 0
+#define LED_FADE_AUTO 0.0
 #define LED_FADE_DELTA LED_FADE_AUTO // auto-delta
 #define LED_FADE_NUMSTEPS 32
 #define LED_FADE_DELAY 32
@@ -163,7 +164,7 @@ class LEDLight : public Sensor {
     public:
         LEDLight(Node *gw, int pwm_pin, uint8_t device_id=AUTO);
         virtual bool react(const MyMessage &msg);
-        void fade(uint8_t to, int delta=LED_FADE_DELTA, bool raw_value=false);
+        void fade(uint8_t to, float delta=LED_FADE_DELTA, bool raw_value=false);
         void setState(bool on);
         
     private:
@@ -187,6 +188,24 @@ class PhotoResistorSensor : public Sensor {
         
     private:
         int m_analog_pin;
+};
+#endif
+
+#if 0
+//
+// HC-SR04 Ultrasonic Distance Sensor
+//
+class UltrasonicSensor : public Sensor {
+    public:
+        UltrasonicSensor(Node *gw, int trigger_pin, int echo_pin, uint8_t device_id=AUTO);
+        
+        //virtual bool ready(unsigned long *next_check_ms=NULL) { return true; }
+        virtual bool sense();
+        virtual bool report();
+        
+    private:
+        int m_trigger_pin;
+        int m_echo_pin;
 };
 #endif
 

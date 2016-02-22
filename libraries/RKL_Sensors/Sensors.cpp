@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <SensorNode.h>
 #include <Sensors.h>
+#include <math.h>
 
 //
 // Interval sensors
@@ -315,7 +316,9 @@ bool PresenceSensor::sense()
             // (re)set the timer
             m_off_after = millis() + PRESENCE_OFF_DELAY;
 #if PRESENCE_DEBUG
-            Serial.print("Off time: ");
+            Serial.print("Time: ");
+            Serial.print(millis());
+            Serial.print(", turning off at: ");
             Serial.println(m_off_after);
 #endif
         }
@@ -336,7 +339,7 @@ bool PresenceSensor::sense()
             m_tripped = false; // set to off
             m_off_after = PRESENCE_TIMER_OFF; // disable timer
 #if PRESENCE_DEBUG
-            Serial.print("Sending off at ");
+            Serial.print("No motion detected. Turning off at: ");
             Serial.println(millis());
 #endif
             return true; // send the off signal now
@@ -371,7 +374,10 @@ int PresenceSensor::getInterrupt()
 
 bool PresenceSensor::motionDetected()
 {
-    return m_tripped;
+    // If the presence timer is active, then we detected motion within
+    // the current timeout time.
+    // See ::sense() for timer logic. 
+    return (m_off_after != PRESENCE_TIMER_OFF);
 }
 
 #if 1
@@ -397,14 +403,23 @@ LEDLight::LEDLight(Node *gw, int pwm_pin, uint8_t device_id)
 }
 
 // given to = 0..100%, fade the LED panel to the matching level
-void LEDLight::fade(uint8_t to, int delta, bool raw_value)
+void LEDLight::fade(uint8_t to, float delta, bool raw_value)
 {
     uint8_t curr = (m_on ? m_brightness : 0);
+    int direction = (to < curr) ? -1 : 1;
     
     // calculate automatic delta value for smooth transitions that take a 
     // bounded amount of time
     if (delta == LED_FADE_AUTO) {
-        delta = max(abs(to-curr) / LED_FADE_NUMSTEPS, 1);
+        // Linear
+        //delta = max(abs(to-curr) / LED_FADE_NUMSTEPS, 1);
+        
+        // Logarithmic
+        // This is based solving for R in the P*e^(R*t) formula, which actually 
+        // gives a rate (delta) based on continuous growth, whereas we're 
+        // actually growing only at discrete intervals, so our delta will 
+        // result in slightly too many steps, but that's not super critical.
+        delta = 1.0 + (log(max(1,abs(to-curr))) / LED_FADE_NUMSTEPS);
     }
     
     if (raw_value) {
@@ -414,13 +429,26 @@ void LEDLight::fade(uint8_t to, int delta, bool raw_value)
         to = map(to, 0, 100, LED_MIN_LEVEL, LED_MAX_LEVEL);
     }
 
-    if ((to < curr && delta > 0) || (to > curr && delta < 0)) {
-        // reverse direction
-        delta = -delta;
+    //if ((to < curr && delta > 0) || (to > curr && delta < 0)) { // linear
+    if ((direction < 0 && delta > 1) || (direction > 0 && delta < 1)) { // log
+        // reverse delta
+        // Linear
+        //delta = -delta;
+        
+        // Logarithmic
+        delta = 1/delta;
     }
 
     while (curr != to) {
-        curr = constrain(curr + delta, min(curr, to), max(curr, to));
+        // Linear
+        //curr = constrain(curr + delta, min(curr, to), max(curr, to));
+        // Logarithmic
+        uint8_t prev = curr;
+        curr = constrain(curr * delta, min(curr, to), max(curr, to));
+        if (curr == prev && curr != to) {
+            // must always move at least one to avoid infinite loop
+            curr += direction;
+        }
         analogWrite(m_pin, curr);
         delay(LED_FADE_DELAY);
     }
