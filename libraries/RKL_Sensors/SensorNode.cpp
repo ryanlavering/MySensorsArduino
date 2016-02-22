@@ -10,8 +10,22 @@
 // this node.
 //
 
-Node::Node(uint8_t _cepin, uint8_t _cspin)
-        : MySensor(_cepin,_cspin)
+Node::Node(MyTransport &_radio, MyHw &_hw
+#ifdef MY_SIGNING_FEATURE
+    , MySigning &_signer
+#endif
+#ifdef WITH_LEDS_BLINKING
+    , uint8_t _rx, uint8_t _tx, uint8_t _er, unsigned long _blink_period
+#endif
+    )
+        : MySensor(_radio, _hw
+#ifdef MY_SIGNING_FEATURE
+            , _signer
+#endif
+#ifdef WITH_LEDS_BLINKING
+            , _rx, _tx, _er, _blink_period
+#endif
+            )
 {
     next_device_id = 0;
     memset(m_sensors, 0, sizeof(m_sensors));
@@ -39,7 +53,7 @@ void Node::presentDevice(Sensor *s, uint8_t sub_device, bool ack)
         s->setId(next_device_id++, sub_device);
     }
     if (!s->present()) {
-        present(s->getId(sub_device), s->getType(sub_device), ack);
+        present(s->getId(sub_device), s->getType(sub_device), s->getDescription(sub_device), ack);
     }
 }
 
@@ -50,7 +64,7 @@ void Node::presentAll(bool ack)
         assignDeviceIds(s); // make sure all devices have a proper ID
         if (!s->present()) {
             for (int j = 0; j < s->getNumSubDevices(); j++) {
-                present(s->getId(j), s->getType(j), ack);
+                present(s->getId(j), s->getType(j), s->getDescription(j), ack);
             }
         }
     }
@@ -128,7 +142,7 @@ void Node::processIncoming(const MyMessage &msg)
 // 
 // Device
 //
-Device::Device(uint8_t type, uint8_t dtype, uint8_t id, uint8_t num_sub_devices) 
+Device::Device(uint8_t type, uint8_t dtype, uint8_t id, uint8_t num_sub_devices, const char *description) 
         : m_num_sub_devices(num_sub_devices)
 {
     if (num_sub_devices > MAX_SUB_DEVICES) {
@@ -144,6 +158,7 @@ Device::Device(uint8_t type, uint8_t dtype, uint8_t id, uint8_t num_sub_devices)
         }
         setType(type, i);
         setDataType(dtype, i);
+        setDescription(description, i);
     }
 }
         
@@ -177,6 +192,16 @@ void Device::setDataType(uint8_t new_type, uint8_t sub_device)
 {
     m_sub[sub_device].data_type = new_type;
     m_sub[sub_device].msg.setType(new_type);
+}
+
+const char *Device::getDescription(uint8_t sub_device)
+{
+    return m_sub[sub_device].description;
+}
+
+void Device::setDescription(const char *new_description, uint8_t sub_device)
+{
+    m_sub[sub_device].description = new_description;
 }
 
 MyMessage &Device::getMessage(uint8_t sub_device)

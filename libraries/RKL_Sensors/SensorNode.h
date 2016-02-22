@@ -24,7 +24,17 @@ class Sensor;
 class Node : public MySensor {
     public:
         // Create a new node instance
-        Node(uint8_t _cepin=DEFAULT_CE_PIN, uint8_t _cspin=DEFAULT_CS_PIN);
+        Node(MyTransport &radio =*new MyTransportNRF24(), MyHw &hw=*new MyHwDriver()
+#ifdef MY_SIGNING_FEATURE
+            , MySigning &signer=*new MySigningNone()
+#endif
+#ifdef WITH_LEDS_BLINKING
+            , uint8_t _rx=DEFAULT_RX_LED_PIN,
+            uint8_t _tx=DEFAULT_TX_LED_PIN,
+            uint8_t _er=DEFAULT_ERR_LED_PIN,
+            unsigned long _blink_period=DEFAULT_LED_BLINK_PERIOD
+#endif
+            );
         
         /*
         // Start the node running
@@ -84,12 +94,13 @@ struct SubDevice {
     uint8_t device_id;
     uint8_t sensor_type;
     uint8_t data_type;
+    const char *description; 
     MyMessage msg;
 };
 
 class Device {
     public:
-        Device(uint8_t type, uint8_t dtype, uint8_t id=AUTO, uint8_t num_sub_devices=1);
+        Device(uint8_t type, uint8_t dtype, uint8_t id=AUTO, uint8_t num_sub_devices=1, const char *description="");
         
         uint8_t getId(uint8_t sub_device=0);
         void setId(uint8_t new_id, uint8_t sub_device=0);
@@ -99,6 +110,9 @@ class Device {
         
         uint8_t getDataType(uint8_t sub_device=0);
         void setDataType(uint8_t new_type, uint8_t sub_device=0);
+        
+        const char *getDescription(uint8_t sub_device=0);
+        void setDescription(const char *new_description, uint8_t sub_device=0);
         
         MyMessage &getMessage(uint8_t sub_device=0);
         
@@ -113,8 +127,8 @@ class Device {
 class Sensor : public Device {
     public:
         Sensor(Node *gw, uint8_t type, uint8_t dtype, uint8_t id=AUTO, 
-                    uint8_t num_sub_devices=1) 
-                : Device(type, dtype, id, num_sub_devices),
+                    uint8_t num_sub_devices=1, const char *description="") 
+                : Device(type, dtype, id, num_sub_devices, description),
                     m_gw(gw)
         {
             // pass

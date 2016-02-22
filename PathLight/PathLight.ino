@@ -8,7 +8,7 @@
 // Define the Node instance
 Node node;
 #define NODE_NAME "PathLight"
-#define NODE_VERSION "1.1"
+#define NODE_VERSION "1.2"
 #define NODE_IS_REPEATER true
 //#define NODE_ID AUTO
 #define NODE_ID 110
