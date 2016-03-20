@@ -122,7 +122,7 @@ class SimpleIconLedMatrix : public Sensor {
 #define PRESENCE_ONLY_SEND_ON 0 // if 1, only send "on" messages; controller will turn off
 #define PRESENCE_OFF_DELAY (60*1000UL) // only send off if no "on" signal within 60 seconds
 #define PRESENCE_TIMER_OFF (-1UL)
-
+#define PRESENCE_MAX_RETRIES 5
 #define PRESENCE_DEBUG 1
 
 class PresenceSensor : public Sensor {

@@ -331,16 +331,15 @@ bool PresenceSensor::sense()
     if (current != m_tripped) {
         // Value changed since last reading
 #if PRESENCE_DEBUG
-        Serial.println(current ? "Motion detected" : "All quiet");
+        Serial.print(millis());
+        Serial.println(current ? ": Motion detected" : ": All quiet");
 #endif
         m_tripped = current;
         if (m_tripped) {
             // (re)set the timer
             m_off_after = millis() + m_off_delay;
 #if PRESENCE_DEBUG
-            Serial.print("Time: ");
-            Serial.print(millis());
-            Serial.print(", turning off at: ");
+            Serial.print("  Turning off at: ");
             Serial.println(m_off_after);
 #endif
         }
@@ -361,8 +360,8 @@ bool PresenceSensor::sense()
             m_tripped = false; // set to off
             m_off_after = PRESENCE_TIMER_OFF; // disable timer
 #if PRESENCE_DEBUG
-            Serial.print("No motion detected. Turning off at: ");
-            Serial.println(millis());
+            Serial.print(millis());
+            Serial.println(": No motion detected. Turning off now.");
 #endif
             return true; // send the off signal now
         } else {
@@ -374,10 +373,21 @@ bool PresenceSensor::sense()
 
 bool PresenceSensor::report()
 {
+    static int retries = 0;
     bool ok = m_gw->send(getMessage().set(m_tripped));
     if (!ok && !m_tripped) {
-        // "Off" signal lost. Make sure to resend next round.
-        m_off_after = 0;
+        if (retries < PRESENCE_MAX_RETRIES) {
+            // "Off" signal lost. Make sure to resend next round.
+            m_off_after = 0; // NOTE: This will hold ::motionDetected() hostage
+            retries++;
+        } else {
+            // We tried to tell the world, but no one is listening. Just move on.
+            ok = true;
+        }
+    }
+    
+    if (ok) {
+        retries = 0; // reset retry counter
     }
     
     return ok;
