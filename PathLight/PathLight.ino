@@ -12,6 +12,8 @@ Node node;
 #define NODE_IS_REPEATER false
 //#define NODE_ID AUTO
 #define NODE_ID 110
+#define NODE_PARENT AUTO
+//#define NODE_PARENT 100
 
 // Define sensor instances
 PresentationMetaSensor presentation(&node);
@@ -45,7 +47,7 @@ void incomingMessage(const MyMessage &msg) {
 }
 
 void setup() {
-  node.begin(incomingMessage, NODE_ID, NODE_IS_REPEATER);
+  node.begin(incomingMessage, NODE_ID, NODE_IS_REPEATER, NODE_PARENT);
   node.sendSketchInfo(NODE_NAME, NODE_VERSION);
   for (int i = 0; i < NUM_SENSORS; i++) {
     node.addSensor(sensors[i]);
