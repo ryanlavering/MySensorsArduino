@@ -24,6 +24,10 @@ class Sensor;
 
 // Base class implementing basic node logic for sensor nodes
 class Node : public MySensor {
+    public: 
+        typedef bool (*SleepCallback)(void);
+        typedef void (*WakeCallback)(bool interrupt_wake);
+    
     public:
         // Create a new node instance
         Node(MyTransport &radio =*new MyTransportNRF24(), MyHw &hw=*new MyHwDriver()
@@ -75,6 +79,36 @@ class Node : public MySensor {
         // }
         void processIncoming(const MyMessage &msg);
         
+        // When the node goes to sleep, enable a callback before turning off 
+        // the radio and powering down the node. 
+        //
+        // This can be useful, for example, with a battery powered node that 
+        // uses a motion detector to wake up. By providing a delay during
+        // shutdown we can allow the voltage regularor time to settle before
+        // fully sleeping, which prevents invalid motion detection.
+        // 
+        // The callback must return a boolean value indicating whether or not
+        // the node should continue going to sleep. If the function returns 
+        // false the node will NOT continue going to sleep, and the wake 
+        // callback (if defined) will NOT be called. 
+        //
+        // Pass in NULL to disable callback. 
+        void setSleepCallback(SleepCallback func_on_sleep) { m_sleep_callback = func_on_sleep; }
+        
+        // Set wake up callback. This function will be called just after the 
+        // node wakes from a sleep. 
+        //
+        // The function will be passed one boolean parameter indicating 
+        // whether the wake was due to an interrupt (true) or the sleep 
+        // timer expiring (false). 
+        //
+        // Pass in NULL to disable callback. 
+        void setWakeCallback(WakeCallback func_on_wake) { m_wake_callback = func_on_wake; }
+        
+        // Expose the raw radio (USE CAUTION WHEN MESSING WITH THIS OR THE 
+        // NODE COULD BE LEFT IN AN INVALID STATE!) 
+        MyTransport& getRadio() { return radio; }
+        
     protected:
         // Set Arduino millis() value
         void setMillis(unsigned long new_millis);
@@ -83,6 +117,8 @@ class Node : public MySensor {
         Sensor *m_sensors[MAX_SENSORS];
         int m_num_sensors;
         int next_device_id;
+        SleepCallback m_sleep_callback;
+        WakeCallback m_wake_callback;
 };
 
 

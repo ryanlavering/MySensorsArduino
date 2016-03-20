@@ -24,10 +24,19 @@ LEDLight led(&node, 5);
 // Add sensors to this table to have them automatically registered 
 Sensor *sensors[] = {
   &presentation,
-  &hb,
   &presence,
   &led,
+  &hb,
 };
+
+bool sleepSetup() {
+  // Shut down radio and wait for 1 second to provide "staggered shutdown" 
+  node.getRadio().powerDown();
+  node.wait(1000);
+
+  // do go to sleep
+  return true;
+}
 
 void processRules() {
   // Make sure that LED light status reflects the presence sensor state
@@ -47,6 +56,9 @@ void incomingMessage(const MyMessage &msg) {
 }
 
 void setup() {
+  // For this node, we need special logic before it goes to sleep
+  node.setSleepCallback(sleepSetup);
+  
   node.begin(incomingMessage, NODE_ID, NODE_IS_REPEATER, NODE_PARENT);
   node.sendSketchInfo(NODE_NAME, NODE_VERSION);
   for (int i = 0; i < NUM_SENSORS; i++) {

@@ -30,6 +30,8 @@ Node::Node(MyTransport &_radio, MyHw &_hw
     next_device_id = 0;
     memset(m_sensors, 0, sizeof(m_sensors));
     m_num_sensors = 0;
+    m_sleep_callback = NULL;
+    m_wake_callback = NULL;
 }
 
 /*
@@ -149,38 +151,52 @@ void Node::update()
         unsigned long before = millis();
         if (sleep_until == SLEEP_UNTIL_INTERRUPT 
                 && (interrupts[0] || interrupts[1])) {
-            sleep_length = 0;
+            sleep_length = 0; // sleep() interprets 0 as "forever"
         } else {
             // convert to relative time
             sleep_length = sleep_until - before; 
         }
         
-        bool interrupt_wake = false;
+        // Call sleep callback (if defined) and as long as it doesn't cancel
+        // go to sleep. 
+        if (m_sleep_callback == NULL || m_sleep_callback()) {
+            bool interrupt_wake = false;
 
-        // Deal with various interrupt scenarios (hard coded for 2-interrupt 
-        // Arduinos)
-        if (interrupts[0] && interrupts[1]) {
-            interrupt_wake = (sleep(0, CHANGE, 1, CHANGE, sleep_length) >= 0);
-        } else if (interrupts[0]) {
-            interrupt_wake = sleep(0, CHANGE, sleep_length);
-        } else if (interrupts[1]) {
-            interrupt_wake = sleep(1, CHANGE, sleep_length);
-        } else {
-            sleep(sleep_length);
+            // Deal with various interrupt scenarios (hard coded for 2-interrupt 
+            // Arduinos)
+            if (interrupts[0] && interrupts[1]) {
+                interrupt_wake = (sleep(0, CHANGE, 1, CHANGE, sleep_length) >= 0);
+            } else if (interrupts[0]) {
+                interrupt_wake = sleep(0, CHANGE, sleep_length);
+            } else if (interrupts[1]) {
+                interrupt_wake = sleep(1, CHANGE, sleep_length);
+            } else {
+                sleep(sleep_length);
+            }
+            
+            // sleeping... zzzz...
+            // 
+            // ... awake!
+            
+            // Fix up millis() time now that we're back (sleep() resets the 
+            // clock to 0, which causes all sorts of issues with sensors)
+            if (!interrupt_wake) {
+                // we slept for the complete time
+                setMillis(sleep_until);
+            } else {
+                // woken up by interrupt. the only thing we know for certain 
+                // is that it is "later", but we don't know by how much.
+                setMillis(before + 1);
+            }
+            
+            // Call wake callback if defined
+            if (m_wake_callback != NULL) {
+                m_wake_callback(interrupt_wake);
+            }
+            
+            Serial.print("...and we're back. Current time is: ");
+            Serial.println(millis());
         }
-        
-        // Fix up millis() time now that we're back (sleep() resets the 
-        // clock to 0, which causes all sorts of issues with sensors)
-        if (!interrupt_wake) {
-            // we slept for the complete time
-            setMillis(sleep_until);
-        } else {
-            // woken up by interrupt. the only thing we know for certain 
-            // is that it is "later", but we don't know by how much.
-            setMillis(before + 1);
-        }
-        Serial.print("...and we're back. Current time is: ");
-        Serial.println(millis());
     }
 }
 
