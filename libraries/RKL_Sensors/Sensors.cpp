@@ -7,8 +7,10 @@
 // Interval sensors
 //
 IntervalSensor::IntervalSensor(Node *gw, unsigned long interval, uint8_t type, 
-            uint8_t dtype, uint8_t id, uint8_t num_sub_devices)
-        : Sensor(gw, type, dtype, id, num_sub_devices), m_interval(interval)
+            uint8_t dtype, uint8_t id, uint8_t num_sub_devices,
+            const char *description)
+        : Sensor(gw, type, dtype, id, num_sub_devices, description), 
+            m_interval(interval)
 {
     m_next_timeout = millis(); // now
 }
@@ -33,7 +35,7 @@ bool IntervalSensor::ready(unsigned long *next_check_ms)
 // Periodically triggers presentation of all node devices to controller
 //
 PresentationMetaSensor::PresentationMetaSensor(Node *gw, unsigned long interval)
-        : IntervalSensor(gw, interval, S_CUSTOM, V_VAR1, AUTO, 0)
+        : IntervalSensor(gw, interval, S_CUSTOM, V_VAR1, AUTO, 0, "presentation")
 {
     //Serial.println("Start: PresMeta");
 }
@@ -55,7 +57,7 @@ bool PresentationMetaSensor::report()
 //
 HeartBeatSensor::HeartBeatSensor(Node *gw, uint8_t device_id, 
             unsigned long interval)
-        : IntervalSensor(gw, interval, S_LIGHT, V_LIGHT, device_id),
+        : IntervalSensor(gw, interval, S_LIGHT, V_LIGHT, device_id, 1, "heartbeat"),
             m_last_state(false)
 {
     //Serial.println("Start: HeartBeat");
@@ -139,7 +141,7 @@ bool DHT22Sensor::report()
 //
 SimpleIconLedMatrix::SimpleIconLedMatrix(Node *gw, uint8_t device_id,
             int data_in_pin, int clk_pin, int load_pin)
-        : Sensor(gw, S_DIMMER, V_DIMMER, device_id, 2),
+        : Sensor(gw, S_DIMMER, V_DIMMER, device_id, 2, "LED_Matrix"),
             m_lc(data_in_pin, clk_pin, load_pin, 1)
 {
     // No need to adjust subdevices; both are (S_DIMMER, V_DIMMER)
@@ -280,11 +282,13 @@ void SimpleIconLedMatrix::draw(const byte *ico) {
 //
 // Presence Sensor
 //
-PresenceSensor::PresenceSensor(Node *gw, uint8_t device_id, int sense_pin)
-        : Sensor(gw, S_LIGHT, V_LIGHT, device_id, 1),
+PresenceSensor::PresenceSensor(Node *gw, uint8_t device_id, int sense_pin, 
+            unsigned long off_delay)
+        : Sensor(gw, S_LIGHT, V_LIGHT, device_id, 1, "presence"),
             m_sense_pin(sense_pin),
             m_tripped(false),
-            m_off_after(PRESENCE_TIMER_OFF)
+            m_off_after(PRESENCE_TIMER_OFF),
+            m_off_delay(off_delay)
 {
     pinMode(sense_pin, INPUT);
     m_warm_up_done = millis() + PRESENCE_SENSOR_WARM_UP;
@@ -292,9 +296,27 @@ PresenceSensor::PresenceSensor(Node *gw, uint8_t device_id, int sense_pin)
     
 bool PresenceSensor::ready(unsigned long *next_check_ms)
 {
-    if (millis() > m_warm_up_done) {
-        return true;
+    if (millis() >= m_warm_up_done) {
+        if (motionDetected()) {
+            // If motion has been detected, then report ready so that 
+            // the node won't go to sleep. We also need the node to keep 
+            // calling sense() to eventually move to the "off" state. 
+            return true;
+        } else if (digitalRead(m_sense_pin) == HIGH) {
+            // Any time the sense pin reads high we are ready.
+            // (This should be hit when coming off of an interrupt.) 
+            return true;
+        } else {
+            // If no motion is detected, then we can report "not ready".
+            // The interrupt handler will kick the node active once a
+            // motion event occurs. 
+            if (next_check_ms != NULL) {
+                *next_check_ms = SLEEP_UNTIL_INTERRUPT;
+            }
+            return false;
+        }
     } else {
+        // If we aren't warmed up, then report "not ready". 
         if (next_check_ms != NULL) {
             *next_check_ms = m_warm_up_done;
         }
@@ -314,7 +336,7 @@ bool PresenceSensor::sense()
         m_tripped = current;
         if (m_tripped) {
             // (re)set the timer
-            m_off_after = millis() + PRESENCE_OFF_DELAY;
+            m_off_after = millis() + m_off_delay;
 #if PRESENCE_DEBUG
             Serial.print("Time: ");
             Serial.print(millis());
@@ -363,6 +385,10 @@ bool PresenceSensor::report()
 
 int PresenceSensor::getInterrupt()
 { 
+    // Don't respond to interrupts until warmup is complete
+    if (millis() < m_warm_up_done) 
+        return -1;
+    
     if (m_sense_pin == 2 || m_sense_pin == 3) {
         // Assume we're on nano/micro/uno where pin<->interrupt mapping is 
         // trivial 
@@ -386,7 +412,7 @@ bool PresenceSensor::motionDetected()
 // LED Light
 //
 LEDLight::LEDLight(Node *gw, int pwm_pin, uint8_t device_id)
-        : Sensor(gw, S_LIGHT, V_DIMMER/*not used*/, device_id, 1),
+        : Sensor(gw, S_LIGHT, V_DIMMER/*not used*/, device_id, 1, "LED"),
             m_pin(pwm_pin),
             m_brightness(0),
             m_on(false)

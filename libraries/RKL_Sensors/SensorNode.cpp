@@ -97,6 +97,11 @@ void Node::assignDeviceIds(Device *d)
 // loop, so it should not block for long. 
 void Node::update()
 {
+    unsigned long next_check_ms = SLEEP_UNTIL_INTERRUPT;
+    unsigned long sleep_until = SLEEP_UNTIL_INTERRUPT; // sleep forever
+    bool interrupts[2] = {false, false}; // hard coded for 2-interrupt arduinos
+    bool do_sleep = true;
+    
     while (process()) {
         // move data through the network
         // See processIncoming()
@@ -104,18 +109,91 @@ void Node::update()
     
     // Now process any sensors that report ready 
     for (int i = 0; i < m_num_sensors; i++) {
-        if (m_sensors[i]->ready()) {
+        if (m_sensors[i]->ready(&next_check_ms)) {
             // Sensors might take some time to respond, only report if 
             // sense() reports data ready
             bool done = m_sensors[i]->sense();
             if (done) {
                 Serial.print("Sensor ");
                 Serial.print(i);
-                Serial.println(" reporting to base");
+                Serial.print(" (");
+                Serial.print(m_sensors[i]->getDescription());
+                Serial.println(") reporting to base");
                 m_sensors[i]->report();
+            }
+            
+            // Don't sleep if any sensor reported ready. 
+            do_sleep = false;
+        } else {
+            // Sensor is not ready. Update sleep scheduling.
+            sleep_until = min(sleep_until, next_check_ms); 
+            
+            // If this sensor supports an interrupt, then record that
+            // NOTE: This is hard coded to support Arduinos that have 2 
+            // interrupts numbered 0 and 1. Any other system will need 
+            // different logic. 
+            int int_num = m_sensors[i]->getInterrupt();
+            if (int_num == 0 || int_num == 1) {
+                interrupts[int_num] = true;
             }
         }
     }
+    
+    // If we are not a repeater node and no sensor reported ready, then 
+    // sleep until the earliest reported next_check_ms value or an interrupt
+    if (do_sleep && !repeaterMode) {
+        Serial.print("Going to sleep until: ");
+        Serial.println(sleep_until);
+        
+        unsigned long sleep_length;
+        unsigned long before = millis();
+        if (sleep_until == SLEEP_UNTIL_INTERRUPT 
+                && (interrupts[0] || interrupts[1])) {
+            sleep_length = 0;
+        } else {
+            // convert to relative time
+            sleep_length = sleep_until - before; 
+        }
+        
+        bool interrupt_wake = false;
+
+        // Deal with various interrupt scenarios (hard coded for 2-interrupt 
+        // Arduinos)
+        if (interrupts[0] && interrupts[1]) {
+            interrupt_wake = (sleep(0, CHANGE, 1, CHANGE, sleep_length) >= 0);
+        } else if (interrupts[0]) {
+            interrupt_wake = sleep(0, CHANGE, sleep_length);
+        } else if (interrupts[1]) {
+            interrupt_wake = sleep(1, CHANGE, sleep_length);
+        } else {
+            sleep(sleep_length);
+        }
+        
+        // Fix up millis() time now that we're back (sleep() resets the 
+        // clock to 0, which causes all sorts of issues with sensors)
+        if (!interrupt_wake) {
+            // we slept for the complete time
+            setMillis(sleep_until);
+        } else {
+            // woken up by interrupt. the only thing we know for certain 
+            // is that it is "later", but we don't know by how much.
+            setMillis(before + 1);
+        }
+        Serial.print("...and we're back. Current time is: ");
+        Serial.println(millis());
+    }
+}
+
+// Set millis() value; necessary because sleeping resets the timer value, but
+// many sensors need a monotonically increasing value from millis() (possibly 
+// rolling over very occasionally)
+// From https://tomblanch.wordpress.com/2013/07/27/resetting_millis/
+extern volatile unsigned long timer0_millis;
+void Node::setMillis(unsigned long new_millis) {
+    uint8_t oldSREG = SREG;
+    cli();
+    timer0_millis = new_millis;
+    SREG = oldSREG;
 }
 
 // Handle incoming packets from the network
@@ -130,8 +208,11 @@ void Node::processIncoming(const MyMessage &msg)
         // If a sensor returns true, it has completely handled the 
         // packet.
         if (m_sensors[i]->react(msg)) {
-            Serial.print("\tHandled by sensor");
-            Serial.println(i);
+            Serial.print("\tHandled by sensor ");
+            Serial.print(i);
+            Serial.print(" (");
+            Serial.print(m_sensors[i]->getDescription());
+            Serial.println(")");
             break;
         }
     }

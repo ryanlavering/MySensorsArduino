@@ -15,6 +15,8 @@
 
 #define NOT_IMPLEMENTED -1
 
+#define SLEEP_UNTIL_INTERRUPT (-1UL)
+
 // Forward declarations
 struct SubDevice;
 class Device;
@@ -72,6 +74,10 @@ class Node : public MySensor {
         //     node.processIncoming(msg); // where 'node' is your Node instance
         // }
         void processIncoming(const MyMessage &msg);
+        
+    protected:
+        // Set Arduino millis() value
+        void setMillis(unsigned long new_millis);
         
     private:
         Sensor *m_sensors[MAX_SENSORS];
@@ -156,7 +162,7 @@ class Sensor : public Device {
             // if the scheduler is paying attention to next_check_ms then 
             // send it the maximum possible value so it won't waste time
             // polling this device.
-            if (next_check_ms != NULL) { *next_check_ms = (unsigned long)-1; }
+            if (next_check_ms != NULL) { *next_check_ms = SLEEP_UNTIL_INTERRUPT; }
             return false; 
         } 
         
@@ -176,6 +182,12 @@ class Sensor : public Device {
         //      this reactor, OR if the packet should be handled by other 
         //      reactors.
         virtual bool react(const MyMessage &msg) { return false; }
+        
+        // Interrupt number.
+        // @return the interrupt number (as used by sleep() calls, NOT the pin 
+        //      number) if one is used by this sensor, otherwise return -1 to 
+        //      indicate that no interupt is used. 
+        virtual int getInterrupt() { return -1; }
         
     protected:
         Node *m_gw;

@@ -7,7 +7,7 @@
 // Base class for interval-based sensors
 class IntervalSensor : public Sensor {
     public:
-        IntervalSensor(Node *gw, unsigned long interval, uint8_t type, uint8_t dtype, uint8_t id=AUTO, uint8_t num_sub_devices=1);
+        IntervalSensor(Node *gw, unsigned long interval, uint8_t type, uint8_t dtype, uint8_t id=AUTO, uint8_t num_sub_devices=1, const char *description="");
         virtual bool ready(unsigned long *next_check_ms=NULL);
         unsigned long nextTimeout() { return m_next_timeout; }
     
@@ -128,13 +128,14 @@ class SimpleIconLedMatrix : public Sensor {
 class PresenceSensor : public Sensor {
     public:
         PresenceSensor(Node *gw, uint8_t device_id=AUTO,
-                    int sense_pin=PRESENCE_SENSOR_PIN);
+                    int sense_pin=PRESENCE_SENSOR_PIN,
+                    unsigned long off_delay=PRESENCE_OFF_DELAY);
                     
         virtual bool ready(unsigned long *next_check_ms=NULL);
         virtual bool sense();
         virtual bool report();
         
-        int getInterrupt();
+        virtual int getInterrupt();
         
         // Was motion detected recently? Relies on reading from last sense() call.
         bool motionDetected();
@@ -144,6 +145,7 @@ class PresenceSensor : public Sensor {
         unsigned long m_warm_up_done;
         int m_sense_pin;
         unsigned long m_off_after;
+        unsigned long m_off_delay;
 };
 
 #if 1

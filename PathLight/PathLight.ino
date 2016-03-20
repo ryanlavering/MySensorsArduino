@@ -8,19 +8,21 @@
 // Define the Node instance
 Node node;
 #define NODE_NAME "PathLight"
-#define NODE_VERSION "1.2"
-#define NODE_IS_REPEATER true
+#define NODE_VERSION "1.4"
+#define NODE_IS_REPEATER false
 //#define NODE_ID AUTO
 #define NODE_ID 110
 
 // Define sensor instances
 PresentationMetaSensor presentation(&node);
-PresenceSensor presence(&node);
+HeartBeatSensor hb(&node, AUTO, 30000UL);
+PresenceSensor presence(&node, AUTO, 3, 15000UL);
 LEDLight led(&node, 5);
 
 // Add sensors to this table to have them automatically registered 
 Sensor *sensors[] = {
   &presentation,
+  &hb,
   &presence,
   &led,
 };
