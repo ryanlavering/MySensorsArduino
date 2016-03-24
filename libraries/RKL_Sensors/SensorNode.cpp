@@ -144,9 +144,6 @@ void Node::update()
     // If we are not a repeater node and no sensor reported ready, then 
     // sleep until the earliest reported next_check_ms value or an interrupt
     if (do_sleep && !repeaterMode) {
-        Serial.print("Going to sleep until: ");
-        Serial.println(sleep_until);
-        
         unsigned long sleep_length;
         unsigned long before = millis();
         if (sleep_until == SLEEP_UNTIL_INTERRUPT 
@@ -160,10 +157,12 @@ void Node::update()
         // Call sleep callback (if defined) and as long as it doesn't cancel
         // go to sleep. 
         if (m_sleep_callback == NULL || m_sleep_callback()) {
-            bool interrupt_wake = false;
-
+            Serial.print("Going to sleep until: ");
+            Serial.println(sleep_until);
+            
             // Deal with various interrupt scenarios (hard coded for 2-interrupt 
             // Arduinos)
+            bool interrupt_wake = false;
             if (interrupts[0] && interrupts[1]) {
                 interrupt_wake = (sleep(0, CHANGE, 1, CHANGE, sleep_length) >= 0);
             } else if (interrupts[0]) {

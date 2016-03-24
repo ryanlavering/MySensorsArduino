@@ -135,6 +135,8 @@ class PresenceSensor : public Sensor {
         virtual bool sense();
         virtual bool report();
         
+        virtual bool react(const MyMessage& msg);
+        
         virtual int getInterrupt();
         
         // Was motion detected recently? Relies on reading from last sense() call.
@@ -146,6 +148,7 @@ class PresenceSensor : public Sensor {
         int m_sense_pin;
         unsigned long m_off_after;
         unsigned long m_off_delay;
+        unsigned long m_last_tripped_at;
 };
 
 #if 1
@@ -168,6 +171,7 @@ class LEDLight : public Sensor {
         virtual bool react(const MyMessage &msg);
         void fade(uint8_t to, float delta=LED_FADE_DELTA, bool raw_value=false);
         void setState(bool on);
+        bool getState();
         
     private:
         int m_pin;
@@ -208,6 +212,51 @@ class UltrasonicSensor : public Sensor {
     private:
         int m_trigger_pin;
         int m_echo_pin;
+};
+#endif
+
+#if 1
+// Periodic callback sensor 
+// Generic interval sensor that will call the given
+// sense() and report() callbacks when the interval expires. 
+//
+// Useful for one-off sketches that need interrupt-friendly periodic logic. 
+#define PERIODIC_CALLBACK_INTERVAL 5000
+class PeriodicCallback : public IntervalSensor {
+    public:
+        typedef bool (*SenseCallback)(void);
+        typedef bool (*ReportCallback)(void);
+        
+    public:
+        PeriodicCallback(Node *gw, unsigned long interval, 
+            SenseCallback sense_func=NULL, ReportCallback report_func=NULL,
+            uint8_t device_id=AUTO, const char *description="periodic");
+                       
+        virtual bool sense();
+        virtual bool report();
+        
+        SenseCallback setSenseCallback(SenseCallback on_sense);
+        ReportCallback setReportCallback(ReportCallback on_report);
+        
+    private:
+        SenseCallback m_sense_callback;
+        ReportCallback m_report_callback;
+};
+
+class IncomingCallback : public Sensor {
+    public:
+        typedef bool (*ReactCallback)(const MyMessage &msg);
+        
+    public:
+        IncomingCallback(Node *gw, ReactCallback react_func, 
+            uint8_t device_id=AUTO, const char *description="react");
+        
+        virtual bool react(const MyMessage &msg);
+        
+        ReactCallback setReactCallback(ReactCallback on_react);
+        
+    private: 
+        ReactCallback m_react_callback;
 };
 #endif
 
