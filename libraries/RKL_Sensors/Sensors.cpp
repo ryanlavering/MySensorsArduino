@@ -335,6 +335,7 @@ bool PresenceSensor::sense()
         Serial.println(current ? ": Motion detected" : ": All quiet");
 #endif
         m_tripped = current;
+        m_last_tripped_at = millis();
         if (m_tripped) {
             // (re)set the timer
             m_off_after = millis() + m_off_delay;
@@ -414,6 +415,24 @@ bool PresenceSensor::motionDetected()
     // the current timeout time.
     // See ::sense() for timer logic. 
     return (m_off_after != PRESENCE_TIMER_OFF);
+}
+
+bool PresenceSensor::react(const MyMessage& msg)
+{
+    if (mGetCommand(msg) == C_REQ && msg.sensor == getId()) {
+        MyMessage rmsg;
+        rmsg.setType(msg.type); // just turn this around
+        rmsg.setSensor(msg.sensor);
+        rmsg.setDestination(msg.sender);
+        rmsg.set(motionDetected() ? millis() - m_last_tripped_at : -1UL);
+        m_gw->send(rmsg);
+        
+        // Message handled
+        return true;
+    }
+    
+    // Message not handled
+    return false;
 }
 
 #if 1
@@ -544,4 +563,80 @@ void LEDLight::setState(bool on)
     m_on = on;
 }
 
-#endif
+bool LEDLight::getState()
+{
+    return m_on;
+}
+
+#endif 
+
+//
+// Periodic Callback
+//
+PeriodicCallback::PeriodicCallback(Node *gw, unsigned long interval, 
+        SenseCallback sense_func, ReportCallback report_func,
+        uint8_t device_id, const char *description)
+    : IntervalSensor(gw, interval, S_CUSTOM, V_VAR1, AUTO, 0, description),
+        m_sense_callback(sense_func), m_report_callback(report_func)
+{
+    /* pass */
+}
+               
+bool PeriodicCallback::sense()
+{
+    if (m_sense_callback != NULL) {
+        return m_sense_callback();
+    } else {
+        return false;
+    }
+}
+
+bool PeriodicCallback::report()
+{
+    if (m_report_callback != NULL) {
+        return m_report_callback();
+    } else {
+        return false;
+    }
+}
+
+PeriodicCallback::SenseCallback PeriodicCallback::setSenseCallback(PeriodicCallback::SenseCallback on_sense)
+{
+    SenseCallback old = m_sense_callback;
+    m_sense_callback = on_sense;
+    return old;
+}
+
+PeriodicCallback::ReportCallback PeriodicCallback::setReportCallback(PeriodicCallback::ReportCallback on_report)
+{
+    ReportCallback old = m_report_callback;
+    m_report_callback = on_report;
+    return old;
+}
+
+//
+// Incoming Message Reactor
+//
+IncomingCallback::IncomingCallback(Node *gw, ReactCallback react_func,
+        uint8_t device_id, const char *description)
+    : Sensor(gw, S_CUSTOM, V_VAR1/*not used*/, device_id, 1, description),
+        m_react_callback(react_func)
+{
+    /* pass */
+}
+
+bool IncomingCallback::react(const MyMessage &msg)
+{
+    if (m_react_callback != NULL) {
+        return m_react_callback(msg);
+    } else {
+        return false;
+    }
+}
+
+IncomingCallback::ReactCallback IncomingCallback::setReactCallback(IncomingCallback::ReactCallback on_react)
+{
+    ReactCallback old = m_react_callback;
+    m_react_callback = on_react;
+    return old;
+}
