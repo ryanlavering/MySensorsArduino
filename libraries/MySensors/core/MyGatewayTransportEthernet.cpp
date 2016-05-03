@@ -100,18 +100,20 @@ typedef struct
 bool gatewayTransportInit() {
 	_w5100_spi_en(true);
 	#if defined(MY_GATEWAY_ESP8266)
-		(void)WiFi.begin(MY_ESP8266_SSID, MY_ESP8266_PASSWORD);
-		#ifdef MY_IP_ADDRESS
-			WiFi.config(_ethernetGatewayIP, gateway, subnet);
+		#if defined(MY_ESP8266_SSID)
+			(void)WiFi.begin(MY_ESP8266_SSID, MY_ESP8266_PASSWORD);
+			#ifdef MY_IP_ADDRESS
+				WiFi.config(_ethernetGatewayIP, gateway, subnet);
+			#endif
+			while (WiFi.status() != WL_CONNECTED)
+			{
+				delay(500);
+				MY_SERIALDEVICE.print(".");
+				yield();
+			}
+			MY_SERIALDEVICE.print(F("IP: "));
+			MY_SERIALDEVICE.println(WiFi.localIP());
 		#endif
-		while (WiFi.status() != WL_CONNECTED)
-		{
-			delay(500);
-			MY_SERIALDEVICE.print(".");
-			yield();
-		}
-		MY_SERIALDEVICE.print(F("IP: "));
-		MY_SERIALDEVICE.println(WiFi.localIP());
 
 	#else
 		#ifdef MY_IP_ADDRESS
@@ -134,9 +136,6 @@ bool gatewayTransportInit() {
 	#else
 		// we have to use pointers due to the constructor of EthernetServer
 		_ethernetServer.begin();
-		#if defined(MY_GATEWAY_ESP8266)
-			_ethernetServer.setNoDelay(true);
-		#endif
 	#endif /* USE_UDP */
 	_w5100_spi_en(false);
 	return true;
