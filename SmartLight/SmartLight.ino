@@ -1,0 +1,74 @@
+#include <MySensor.h>
+#include <SensorNode.h>
+#include <Sensors.h>
+
+// Need to pull in these headers to force linking against respective libs
+#include <SPI.h>
+
+// Define the Node instance
+Node node;
+#define NODE_NAME "SmartLight"
+#define NODE_VERSION "1.4"
+#define NODE_IS_REPEATER false
+//#define NODE_ID AUTO
+#define NODE_ID 120
+#define NODE_PARENT AUTO
+//#define NODE_PARENT 100
+
+// Define sensor instances
+PresentationMetaSensor presentation(&node);
+HeartBeatSensor hb(&node, AUTO, 30000UL);
+PresenceSensor presence(&node, AUTO, 3, 15000UL);
+LEDLight led(&node, 5);
+
+// Add sensors to this table to have them automatically registered 
+Sensor *sensors[] = {
+  &presentation,
+  &presence,
+  &led,
+  &hb,
+};
+
+bool sleepSetup() {
+  // Shut down radio and wait for 1 second to provide "staggered shutdown" 
+  node.getRadio().powerDown();
+  node.wait(1000);
+
+  // do go to sleep
+  return true;
+}
+
+void processRules() {
+  // Make sure that LED light status reflects the presence sensor state
+  // Could also be implemented in the controller
+  led.setState(presence.motionDetected());
+}
+
+//
+// Most of the time the following won't need any adjustment.
+//
+
+#define NUM_SENSORS (sizeof(sensors) / sizeof(sensors[0]))
+
+// Must provide this callback function to process messages. 
+void incomingMessage(const MyMessage &msg) {
+  node.processIncoming(msg);
+}
+
+void setup() {
+  // For this node, we need special logic before it goes to sleep
+  node.setSleepCallback(sleepSetup);
+  
+  node.begin(incomingMessage, NODE_ID, NODE_IS_REPEATER, NODE_PARENT);
+  node.sendSketchInfo(NODE_NAME, NODE_VERSION);
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    node.addSensor(sensors[i]);
+  }
+  node.presentAll();
+}
+
+void loop() {
+  node.update();
+  processRules();
+}
+
